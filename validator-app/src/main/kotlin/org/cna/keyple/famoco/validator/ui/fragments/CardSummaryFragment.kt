@@ -21,16 +21,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
-import java.text.DateFormat
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
-import java.util.Timer
-import java.util.TimerTask
 import org.cna.keyple.famoco.validator.R
 import org.cna.keyple.famoco.validator.data.model.Status
 import org.cna.keyple.famoco.validator.data.model.Status.Companion.getStatus
 import org.cna.keyple.famoco.validator.databinding.FragmentCardSummaryBinding
+import java.text.DateFormat
+import java.text.SimpleDateFormat
+import java.util.*
 
 class CardSummaryFragment : Fragment() {
 
@@ -56,59 +53,59 @@ class CardSummaryFragment : Fragment() {
                 val df: DateFormat =
                     SimpleDateFormat("dd/MM/yyyy, HH:mm", Locale.ENGLISH)
                 val date = df.format(Calendar.getInstance().time)
-                binding?.mainView?.setBackgroundColor(resources.getColor(R.color.green))
-                binding?.animation?.setAnimation("tick_white.json")
+                binding.mainView.setBackgroundColor(resources.getColor(R.color.green))
+                binding.animation.setAnimation("tick_white.json")
                 mTitle.setText(R.string.valid_title)
-                binding?.bigText?.setText(R.string.valid_main_desc)
+                binding.bigText.setText(R.string.valid_main_desc)
                 val nbTickets =
                     arguments!!.getInt(TICKETS_KEY)
                 if (nbTickets != 0) {
-                    binding?.smallDesc?.text = String.format(
+                    binding.smallDesc.text = String.format(
                         getString(R.string.valid_small_desc),
                         date,
                         nbTickets
                     )
                 } else {
-                    binding?.smallDesc?.text = String.format(
+                    binding.smallDesc.text = String.format(
                         getString(R.string.valid_season_ticket_small_desc),
                         date,
                         arguments!!.getString(CONTRACT)
                             ?.trim { it <= ' ' }
                     )
                 }
-                binding?.mediumText?.setText(R.string.valid_last_desc)
-                binding?.mediumText?.visibility = View.VISIBLE
+                binding.mediumText.setText(R.string.valid_last_desc)
+                binding.mediumText.visibility = View.VISIBLE
             }
             Status.INVALID_CARD -> {
-                binding?.mainView?.setBackgroundColor(resources.getColor(R.color.orange))
-                binding?.animation?.setAnimation("error_white.json")
+                binding.mainView.setBackgroundColor(resources.getColor(R.color.orange))
+                binding.animation.setAnimation("error_white.json")
                 mTitle.setText(R.string.card_invalid_title)
-                binding?.bigText?.setText(R.string.card_invalid_main_desc)
-                binding?.smallDesc?.text = String.format(
+                binding.bigText.setText(R.string.card_invalid_main_desc)
+                binding.smallDesc.text = String.format(
                     getString(R.string.card_invalid_small_desc),
                     arguments!!.getString(CARD_TYPE)
                         ?.trim { it <= ' ' }
                 )
-                binding?.mediumText?.visibility = View.GONE
+                binding.mediumText.visibility = View.GONE
             }
             Status.EMPTY_CARD -> {
-                binding?.mainView?.setBackgroundColor(resources.getColor(R.color.red))
-                binding?.animation?.setAnimation("error_white.json")
+                binding.mainView.setBackgroundColor(resources.getColor(R.color.red))
+                binding.animation.setAnimation("error_white.json")
                 mTitle.setText(R.string.no_tickets_title)
-                binding?.bigText?.setText(R.string.no_tickets_main_desc)
-                binding?.smallDesc?.setText(R.string.no_tickets_small_desc)
-                binding?.mediumText?.visibility = View.GONE
+                binding.bigText.setText(R.string.no_tickets_main_desc)
+                binding.smallDesc.setText(R.string.no_tickets_small_desc)
+                binding.mediumText.visibility = View.GONE
             }
             else -> {
-                binding?.mainView?.setBackgroundColor(resources.getColor(R.color.red))
-                binding?.animation?.setAnimation("error_white.json")
+                binding.mainView.setBackgroundColor(resources.getColor(R.color.red))
+                binding.animation.setAnimation("error_white.json")
                 mTitle.setText(R.string.error_title)
-                binding?.bigText?.setText(R.string.error_main_desc)
-                binding?.smallDesc?.setText(R.string.error_small_desc)
-                binding?.mediumText?.visibility = View.GONE
+                binding.bigText.setText(R.string.error_main_desc)
+                binding.smallDesc.setText(R.string.error_small_desc)
+                binding.mediumText.visibility = View.GONE
             }
         }
-        binding?.animation?.playAnimation()
+        binding.animation.playAnimation()
 
         // Play sound
         val mp =
@@ -119,7 +116,7 @@ class CardSummaryFragment : Fragment() {
                 activity!!.runOnUiThread { activity!!.onBackPressed() }
             }
         }, RETURN_DELAY_MS.toLong())
-        return binding?.root
+        return binding.root
     }
 
     override fun onResume() {
@@ -130,6 +127,7 @@ class CardSummaryFragment : Fragment() {
         super.onPause()
         (activity as AppCompatActivity?)!!.supportActionBar!!.hide()
         timer.cancel()
+        timer.purge()
     }
 
     companion object {

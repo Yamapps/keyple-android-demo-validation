@@ -12,10 +12,10 @@
 package org.cna.keyple.famoco.validator.viewModels
 
 import android.app.Activity
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import io.reactivex.Observable
 import io.reactivex.disposables.CompositeDisposable
-import javax.inject.Inject
 import org.cna.keyple.famoco.validator.data.CardReaderApi
 import org.cna.keyple.famoco.validator.data.model.CardReaderResponse
 import org.cna.keyple.famoco.validator.data.model.Status
@@ -28,19 +28,30 @@ import org.eclipse.keyple.core.seproxy.event.ObservableReader
 import org.eclipse.keyple.core.seproxy.event.ReaderEvent
 import org.eclipse.keyple.core.seproxy.exception.KeyplePluginInstantiationException
 import timber.log.Timber
+import javax.inject.Inject
 
 @AppScoped
-class CardReaderViewModel @Inject constructor(private val cardReaderApi: CardReaderApi, private val schedulerProvider: SchedulerProvider) : ViewModel() {
+class CardReaderViewModel @Inject constructor(
+    private val cardReaderApi: CardReaderApi,
+    private val schedulerProvider: SchedulerProvider
+) : ViewModel() {
     /* application states */
     enum class AppState {
         UNSPECIFIED, WAIT_SYSTEM_READY, WAIT_CARD, CARD_STATUS
     }
 
+    private var poReaderObserver: PoObserver? = null
     var currentAppState = AppState.WAIT_SYSTEM_READY
     private val disposables = CompositeDisposable()
     val response = LiveEvent<CardReaderResponse>()
     lateinit var ticketingSession: TicketingSession
-    private var readersInitialized = false
+
+    val isNfcDetecting: MutableLiveData<Boolean> by lazy {
+        MutableLiveData<Boolean>()
+    }
+
+    var readersInitialized = false
+
     override fun onCleared() {
         disposables.clear()
     }
@@ -53,35 +64,48 @@ class CardReaderViewModel @Inject constructor(private val cardReaderApi: CardRea
      */
     private fun setUiResponse(status: Status, tickets: Int, contract: String, cardType: String) {
         Timber.d("setUiResponse $status $tickets $contract $cardType")
-        disposables.add(Observable.just(CardReaderResponse(
-                    status,
-                    tickets,
-                    contract,
-                    cardType))
-                .subscribeOn(schedulerProvider.io())
-                .observeOn(schedulerProvider.ui())
-                .subscribe { t: CardReaderResponse? ->
-                    response.setValue(t)
-                }
+        disposables.add(Observable.just(
+            CardReaderResponse(
+                status,
+                tickets,
+                contract,
+                cardType
+            )
+        )
+            .subscribeOn(schedulerProvider.io())
+            .observeOn(schedulerProvider.ui())
+            .subscribe { t: CardReaderResponse? ->
+                response.setValue(t)
+            }
         )
     }
 
     @Throws(KeyplePluginInstantiationException::class)
-    fun initCardReader() {
+    suspend fun initCardReader() {
         Timber.d("initCardReader")
         if (!readersInitialized) {
-            val poReaderObserver: ObservableReader.ReaderObserver = PoObserver()
+            poReaderObserver = PoObserver()
             cardReaderApi.init(poReaderObserver)
-            ticketingSession = cardReaderApi.getTicketingSession()
+            ticketingSession = cardReaderApi.getTicketingSession()!!
             handleAppEvents(AppState.WAIT_CARD, null)
             readersInitialized = true
             Timber.d("readersInitialized")
         }
     }
 
+    fun samReaderAvailable(): String {
+        val samReaderAvailable = ticketingSession.samReaderAvailable()
+        return if (samReaderAvailable) {
+            "OK"
+        } else {
+            "not available"
+        }
+    }
+
     fun startNfcDetection(activity: Activity?) {
         if (readersInitialized) {
             cardReaderApi.startNfcDetection(activity!!)
+            isNfcDetecting.postValue(true)
             Timber.d("startNfcDetection")
         }
     }
@@ -89,6 +113,7 @@ class CardReaderViewModel @Inject constructor(private val cardReaderApi: CardRea
     fun stopNfcDetection(activity: Activity?) {
         if (readersInitialized) {
             cardReaderApi.stopNfcDetection(activity!!)
+            isNfcDetecting.postValue(false)
             Timber.d("stopNfcDetection")
         }
     }
@@ -102,7 +127,6 @@ class CardReaderViewModel @Inject constructor(private val cardReaderApi: CardRea
     private fun handleAppEvents(appState: AppState, readerEvent: ReaderEvent?) {
 
         var newAppState = appState
-
         Timber.i("Current state = $currentAppState, wanted new state = $newAppState, event = ${readerEvent?.eventType}")
         when (readerEvent?.eventType) {
             ReaderEvent.EventType.SE_INSERTED, ReaderEvent.EventType.SE_MATCHED -> {
@@ -111,7 +135,8 @@ class CardReaderViewModel @Inject constructor(private val cardReaderApi: CardRea
                 }
                 Timber.i("Process default selection...")
 
-                val seSelectionResult = ticketingSession.processDefaultSelection(readerEvent.defaultSelectionsResponse)
+                val seSelectionResult =
+                    ticketingSession.processDefaultSelection(readerEvent.defaultSelectionsResponse)
 
                 if (!seSelectionResult.hasActiveSelection()) {
                     Timber.e("PO Not selected")
@@ -149,29 +174,58 @@ class CardReaderViewModel @Inject constructor(private val cardReaderApi: CardRea
                                 val cardContent = ticketingSession.cardContent
                                 val contract = String(cardContent.contracts[1] ?: byteArrayOf(0))
                                 Timber.i("Contract =  $contract")
-                                if (contract.isEmpty() || contract.contains("NO CONTRACT") || !contract.contains("SEASON")) {
+                                if (contract.isEmpty() ||
+                                    contract.contains("NO CONTRACT") ||
+                                    !contract.contains("SEASON")
+                                ) {
                                     // index des counters commence à un
                                     cardContent.counters[1]?.let {
-                                        if (it> 0) {
-                                            if (ticketingSession.debitTickets(1) == ITicketingSession.STATUS_OK) {
+                                        if (it > 0) {
+                                            val result = ticketingSession.debitTickets(1)
+                                            if (result == ITicketingSession.STATUS_OK) {
                                                 Timber.i("Debit TICKETS_FOUND page.")
-                                                setUiResponse(Status.TICKETS_FOUND, it - 1, "", ticketingSession.poTypeName ?: "")
+                                                setUiResponse(
+                                                    Status.TICKETS_FOUND,
+                                                    it - 1,
+                                                    "",
+                                                    ticketingSession.poTypeName ?: ""
+                                                )
                                             } else {
                                                 Timber.i("Debit ERROR page.")
-                                                setUiResponse(Status.ERROR, 0, "", ticketingSession.poTypeName ?: "")
+                                                setUiResponse(
+                                                    Status.ERROR,
+                                                    0,
+                                                    "",
+                                                    ticketingSession.poTypeName ?: ""
+                                                )
                                             }
                                         } else {
                                             Timber.i("Load EMPTY_CARD page.")
-                                            setUiResponse(Status.EMPTY_CARD, 0, "", ticketingSession.poTypeName ?: "")
+                                            setUiResponse(
+                                                Status.EMPTY_CARD,
+                                                0,
+                                                "",
+                                                ticketingSession.poTypeName ?: ""
+                                            )
                                         }
                                     }
                                 } else {
                                     if (ticketingSession.loadTickets(0) == ITicketingSession.STATUS_OK) {
                                         Timber.i("Season TICKETS_FOUND page.")
-                                        setUiResponse(Status.TICKETS_FOUND, 0, contract, ticketingSession.poTypeName ?: "")
+                                        setUiResponse(
+                                            Status.TICKETS_FOUND,
+                                            0,
+                                            contract,
+                                            ticketingSession.poTypeName ?: ""
+                                        )
                                     } else {
                                         Timber.i("Season ticket ERROR page.")
-                                        setUiResponse(Status.ERROR, 0, "", ticketingSession.poTypeName ?: "")
+                                        setUiResponse(
+                                            Status.ERROR,
+                                            0,
+                                            "",
+                                            ticketingSession.poTypeName ?: ""
+                                        )
                                     }
                                 }
                             }
@@ -189,11 +243,17 @@ class CardReaderViewModel @Inject constructor(private val cardReaderApi: CardRea
         Timber.i("New state = $currentAppState")
     }
 
-    private inner class PoObserver : ObservableReader.ReaderObserver {
+    inner class PoObserver : ObservableReader.ReaderObserver {
         override fun update(event: ReaderEvent) {
             Timber.i("New ReaderEvent received :${event.eventType.name}")
             handleAppEvents(currentAppState, event)
         }
+    }
+
+    fun onDestroy() {
+        readersInitialized = false
+        cardReaderApi.onDestroy(poReaderObserver)
+        poReaderObserver = null
     }
 
     companion object {

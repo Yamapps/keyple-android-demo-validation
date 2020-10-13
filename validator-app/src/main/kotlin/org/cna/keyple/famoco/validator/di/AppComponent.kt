@@ -19,7 +19,7 @@ import org.cna.keyple.famoco.validator.Application
 import org.cna.keyple.famoco.validator.di.scopes.AppScoped
 
 @AppScoped
-@Component(modules = [ViewModelModule::class, AppModule::class, UIModule::class, SchedulerModule::class, AndroidSupportInjectionModule::class])
+@Component(modules = [ViewModelModule::class, AppModule::class, UIModule::class, SchedulerModule::class, AndroidSupportInjectionModule::class, ReaderModule::class])
 interface AppComponent : AndroidInjector<Application?> {
     @Component.Builder
     interface Builder {
